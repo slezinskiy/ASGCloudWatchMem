@@ -1,0 +1,18 @@
+{
+    "metrics": {
+      "append_dimensions": {
+        "AutoScalingGroupName": "${!aws:AutoScalingGroupName}",
+        "ImageId": "${!aws:ImageId}",
+        "InstanceId": "${!aws:InstanceId}",
+        "InstanceType": "${!aws:InstanceType}"
+      },
+      "aggregation_dimensions" : [["AutoScalingGroupName"]],
+      "metrics_collected": {
+        "mem": {
+          "measurement": [
+            "mem_used_percent"
+          ]
+        }
+      }
+    }
+  }
