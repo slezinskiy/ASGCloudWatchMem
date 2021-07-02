@@ -6,11 +6,11 @@ provider "aws" {
 }
 
 
-resource "aws_ssm_parameter" "cloudwatch" {
-  name  = "AmazonCloudWatch-linux"
-  type  = "String"
-  value = file("rule.json")
-}
+#resource "aws_ssm_parameter" "cloudwatch" {
+#  name  = "AmazonCloudWatch-linux"
+#  type  = "String"
+#  value = file("rule.json")
+#}
 
 
 resource "aws_iam_role_policy" "cloudwatch" {
@@ -84,19 +84,21 @@ resource "aws_launch_template" "for_asg" {
   tags = {
     "Name" = "Instance from ${data.aws_ami.latest_ami_built_by_packer.id} "
   }
-  user_data = base64encode(<<EOF
-  #!/bin/bash
-  yum install amazon-cloudwatch-agent -y
-  cd /opt/aws/amazon-cloudwatch-agent/bin
-  ./amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 c ssm:AmazonCloudWatch-linux -s
-  systemctl enable amazon-cloudwatch-agent
-  systemctl start amazon-cloudwatch-agent
-  EOF
-  )
-  key_name = var.key_name
+
+  user_data = base64encode(data.template_file.user_data.rendered)
+  key_name  = var.key_name
   iam_instance_profile {
     name = "cloudwatch_profile"
   }
+}
+
+data "template_file" "user_data" {
+  template = file("boot_script.tpl")
+
+}
+
+output "templatefile" {
+  value = data.template_file.user_data.rendered
 }
 
 
@@ -143,3 +145,55 @@ output "availabilityzone" {
   value = data.aws_availability_zones.available.names
 }
 #arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+
+#################   Down   ###############
+resource "aws_cloudwatch_metric_alarm" "lowmemusage" {
+  alarm_name          = "LowMemoryUsage"
+  comparison_operator = "LessThanOrEqualToThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "MemoryUtilization"
+  namespace           = "ASG_Memory"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "30"
+  alarm_description   = "Memory usage is low"
+  dimensions = {
+    AutoScalingGroupName = aws_autoscaling_group.asg.name
+  }
+  alarm_actions = [aws_autoscaling_policy.down.arn]
+}
+resource "aws_autoscaling_policy" "down" {
+  name               = "Down_policy"
+  scaling_adjustment = -1
+  adjustment_type    = "ChangeInCapacity"
+  #cooldown               = 300
+  cooldown               = 60
+  autoscaling_group_name = aws_autoscaling_group.asg.name
+}
+
+#################   Up   ###############
+resource "aws_cloudwatch_metric_alarm" "highmemusage" {
+  alarm_name          = "HighMemoryUsage"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "MemoryUtilization"
+  namespace           = "ASG_Memory"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "50"
+  alarm_description   = "Memory usage is high"
+  dimensions = {
+    AutoScalingGroupName = aws_autoscaling_group.asg.name
+  }
+  alarm_actions = [aws_autoscaling_policy.up.arn]
+}
+
+resource "aws_autoscaling_policy" "up" {
+  name               = "Up_policy"
+  scaling_adjustment = 1
+  adjustment_type    = "ChangeInCapacity"
+  #cooldown               = 300
+  cooldown               = 60
+  autoscaling_group_name = aws_autoscaling_group.asg.name
+
+}
